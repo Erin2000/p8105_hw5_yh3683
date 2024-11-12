@@ -51,3 +51,114 @@ results_df %>%
   theme_minimal()
 ```
 The plot shows that the probability of at least two people sharing a birthday increases rapidly with group size, surpassing 50% at around 23 people, demonstrating the Birthday Paradox.
+
+# Problem 2
+```{r echo=FALSE}
+# Set simulation parameters
+n_sims <- 5000
+n_subjects <- 30
+sigma <- 5
+mu_values <- c(0, 1, 2, 3, 4, 5, 6)
+alpha <- 0.05
+
+# Initialize empty vectors to store results
+n_total <- length(mu_values) * n_sims
+true_mu_vec <- numeric(n_total)
+sim_id_vec <- numeric(n_total)
+estimate_vec <- numeric(n_total)
+p_value_vec <- numeric(n_total)
+rejected_vec <- logical(n_total)
+
+# Counter for storing results
+counter <- 1
+
+# Run simulations
+for(mu in mu_values) {
+  for(i in 1:n_sims) {
+    # Generate data
+    x <- rnorm(n_subjects, mean = mu, sd = sigma)
+    
+    # Run t-test
+    test_result <- t.test(x, mu = 0)
+    
+    # Store results
+    true_mu_vec[counter] <- mu
+    sim_id_vec[counter] <- i
+    estimate_vec[counter] <- test_result$estimate
+    p_value_vec[counter] <- test_result$p.value
+    rejected_vec[counter] <- test_result$p.value < alpha
+    
+    counter <- counter + 1
+  }
+}
+
+# Create results data frame
+results <- data.frame(
+  true_mu = true_mu_vec,
+  sim_id = sim_id_vec,
+  estimate = estimate_vec,
+  p_value = p_value_vec,
+  rejected = rejected_vec
+)
+
+# Calculate summary statistics
+summary_stats <- results %>%
+  group_by(true_mu) %>%
+  summarize(
+    power = mean(rejected),
+    mean_estimate = mean(estimate),
+    mean_estimate_rejected = mean(estimate[rejected])
+  )
+```
+
+
+```{r echo=FALSE}
+# Plot 1: Power curve
+power_plot <- ggplot(summary_stats, aes(x = true_mu, y = power)) +
+  geom_line(color = "blue") +
+  geom_point(linewidth = 3) +  # Changed from size to linewidth
+  geom_hline(yintercept = alpha, linetype = "dashed", color = "red") +
+  labs(
+    title = "Power Analysis Results",
+    x = "True Value of μ",
+    y = "Power (Proportion of Rejected Nulls)",
+    caption = sprintf("Based on %d simulations with n=%d, σ=%d", n_sims, n_subjects, sigma)
+  ) +
+  theme_minimal() +
+  scale_y_continuous(labels = scales::percent)
+
+print(power_plot)
+```
+
+The plot demonstrates a positive relationship between effect size (μ) and statistical power. At small μ values, the test has low power and often fails to detect true effects. As μ increases, power rises rapidly and approaches 100%, indicating the test becomes increasingly effective at detecting larger effects.
+
+
+
+```{r echo=FALSE}
+estimate_plot <- ggplot(summary_stats, aes(x = true_mu)) +
+  geom_line(aes(y = mean_estimate, color = "All Samples"), linewidth = 1) +
+  geom_line(aes(y = mean_estimate_rejected, color = "Rejected Samples"), linewidth = 1) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray") +
+  labs(
+    title = "Estimation Results",
+    x = "True Value of μ",
+    y = "Estimated μ",
+    color = "Sample Type"
+  ) +
+  theme_minimal() +
+  scale_color_manual(values = c("All Samples" = "blue", "Rejected Samples" = "red"))
+
+# Print power values
+print(knitr::kable(
+  summary_stats %>% 
+    select(true_mu, power) %>%
+    mutate(power = sprintf("%.1f%%", power * 100)),
+  col.names = c("True μ", "Power"),
+  caption = "Power at different effect sizes"
+))
+print(estimate_plot)
+```
+The plot shows that the average estimate of μ for all samples (blue) follows the true value of μ, while the average estimate for only those samples where the null was rejected (red) is consistently higher, particularly for small effect sizes. This phenomenon, known as selection bias, occurs because rejected samples are more likely to have estimates farther from zero, leading to an upward bias in the average estimate for rejected tests.
+
+
+
